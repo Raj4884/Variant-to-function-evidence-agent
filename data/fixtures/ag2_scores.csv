@@ -1,0 +1,19 @@
+variant,gene,condition,lfc,log_cpm
+rs2836882,ETS2,Ileum macrophage,0.31,2.4
+rs2836882,PSMG1,Ileum macrophage,0.04,2.0
+rs2836882,ETS2,Ileum monocyte,0.24,2.4
+rs12913832,OCA2,Skin melanocyte,-0.42,2.4
+rs12913832,HERC2,Skin melanocyte,-0.03,2.0
+rs6497271,OCA2,Skin melanocyte,-0.22,2.4
+rs6497271,HERC2,Skin melanocyte,-0.02,2.0
+rs1175550,SMIM1,BM erythroblast,0.35,2.4
+rs6673829,SMIM1,BM erythroblast,-0.28,2.4
+rs2038740,SCUBE3,Bronchus chondrocyte,0.18,2.4
+rs2038740,TCP11,Bronchus chondrocyte,0.02,2.0
+rs13066062,CXCR6,CD8 TEM,-0.13,2.4
+rs13066062,FYCO1,CD8 TEM,-0.06,2.0
+rs13066062,CXCR6,NK,-0.11,2.4
+rs35705950,MUC5B,Lung AT2,0.55,2.4
+rs3820282,WNT4,Endometrial stromal cell,0.21,2.4
+rs1421085,IRX3,Preadipocyte,0.12,2.4
+rs1421085,IRX5,Preadipocyte,0.11,2.0

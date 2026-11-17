@@ -1,0 +1,21 @@
+[project]
+name = "variant-evidence"
+version = "0.1.0"
+description = "Evidence agent that links a non-coding variant to a target gene, cell type and direction of effect, with every claim tied to a source record."
+requires-python = ">=3.10"
+dependencies = ["pydantic>=2", "httpx", "pyyaml"]
+
+[project.optional-dependencies]
+llm = ["anthropic"]
+dev = ["pytest"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

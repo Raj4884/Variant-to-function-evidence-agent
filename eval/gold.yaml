@@ -1,0 +1,21 @@
+# Gold loci for the harness.
+#
+# split: paper_example      -> the locus is a worked example in the AlphaGenome 2 paper
+#                              (so AG2 was shaped by / reported on it; do not use it to claim generalisation)
+#        heldout_candidate  -> well-known locus NOT used as an example in the paper.
+#                              Targets come from the literature, from memory. VERIFY each one
+#                              against the primary paper before reporting any metric.
+#
+# direction is the effect of the ALT/risk allele on target gene expression.
+loci:
+  - {rsid: rs2836882,  gene: ETS2,   cell_types: [macrophage, monocyte],  direction: up,   split: paper_example}
+  - {rsid: rs12913832, gene: OCA2,   cell_types: [melanocyte],            direction: down, split: paper_example}
+  - {rsid: rs6497271,  gene: OCA2,   cell_types: [melanocyte],            direction: down, split: paper_example}
+  - {rsid: rs1175550,  gene: SMIM1,  cell_types: [erythroblast],          direction: up,   split: paper_example}
+  - {rsid: rs6673829,  gene: SMIM1,  cell_types: [erythroblast],          direction: down, split: paper_example}
+  - {rsid: rs2038740,  gene: SCUBE3, cell_types: [chondrocyte],           direction: up,   split: paper_example}
+  - {rsid: rs13066062, gene: CXCR6,  cell_types: [CD8 TEM, NK],           direction: down, split: paper_example}
+  - {rsid: rs35705950, gene: MUC5B,  cell_types: [AT2],                   direction: up,   split: paper_example}
+  - {rsid: rs3820282,  gene: WNT4,   cell_types: [stromal],               direction: up,   split: paper_example}
+  - {rsid: rs1421085,  gene: IRX3,   cell_types: [preadipocyte],          direction: up,   split: heldout_candidate}
+  - {rsid: rs12740374, gene: SORT1,  cell_types: [hepatocyte],            direction: up,   split: heldout_candidate}

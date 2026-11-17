@@ -1,0 +1,34 @@
+{
+ "rs2836882": [
+  {
+   "study_id": "GCST_IBD",
+   "trait": "inflammatory bowel disease",
+   "pip": 0.2,
+   "method": "SuSiE"
+  }
+ ],
+ "rs12913832": [
+  {
+   "study_id": "GCST_MEL",
+   "trait": "melanoma",
+   "pip": 1.0,
+   "method": "SuSiE"
+  }
+ ],
+ "rs1175550": [
+  {
+   "study_id": "GCST_RET",
+   "trait": "reticulocyte count",
+   "pip": 0.995,
+   "method": "SuSiE"
+  }
+ ],
+ "rs35705950": [
+  {
+   "study_id": "GCST_IPF",
+   "trait": "idiopathic pulmonary fibrosis",
+   "pip": 0.97,
+   "method": "SuSiE"
+  }
+ ]
+}
