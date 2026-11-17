@@ -1,5 +1,7 @@
 # variant-evidence
 
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Raj4884/Variant-to-function-evidence-agent/blob/main/notebooks/colab_run.ipynb) ![tests](https://github.com/Raj4884/Variant-to-function-evidence-agent/actions/workflows/ci.yml/badge.svg)
+
 Given a non-coding variant (rsID), this tool reports which gene it most likely regulates, in which cell type, in which direction, and how confident that call is. Every sentence in the report points at a source record, and a verifier removes any sentence it cannot trace.
 
 It sits on top of the precomputed predictions from AlphaGenome 2 (Gayoso et al., Google DeepMind, 2026) and Open Targets fine-mapping. It does not retrain or reimplement the model.
