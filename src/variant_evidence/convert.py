@@ -59,6 +59,42 @@ def normalise_rows(
         }
 
 
+def normalise_ag2_expression(
+    rows: Iterable[dict],
+    coord_to_rsid: dict[tuple[str, int, str, str], str],
+    lfc_scale: float = 1.0,
+) -> Iterator[dict]:
+    """Convert rows of AG2 `variant_scores_sc_gene_expression.parquet` (columns per the release README).
+
+    - Variants are matched on (chromosome, position, ref, alt); the file has no rsIDs.
+    - The file lists several channels (assay pipelines) per biosample; each channel becomes its own
+      condition, named "<biosample> (<channel>)", so evidence ids stay unique.
+    - Rows without an active score (the 'denoised' channel) are skipped: the paper's call rule needs
+      log(CPM+1) > 1.5 and it cannot be checked for them.
+    - README says the score is a "log fold change"; base is unconfirmed. Pass lfc_scale=math.log(2) if log2.
+    """
+    from .resolve import norm_chrom
+
+    for row in rows:
+        rsid = coord_to_rsid.get((norm_chrom(row["chromosome"]), int(row["position"]), row["ref"], row["alt"]))
+        if rsid is None:
+            continue
+        try:
+            lfc = float(row["sc_gene_expression_score"]) * lfc_scale
+            log_cpm = float(row["sc_gene_expression_active_score"])
+        except (TypeError, ValueError):
+            continue
+        if math.isnan(lfc) or math.isnan(log_cpm):
+            continue
+        yield {
+            "variant": rsid,
+            "gene": str(row["gene_name"]),
+            "condition": f"{row['biosample_name']} ({row['channel_name']})",
+            "lfc": lfc,
+            "log_cpm": log_cpm,
+        }
+
+
 def write_normalised_csv(rows: Iterable[dict], out_path: str | Path) -> int:
     n = 0
     with Path(out_path).open("w", newline="") as fh:

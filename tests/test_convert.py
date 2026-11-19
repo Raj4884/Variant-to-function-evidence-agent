@@ -40,3 +40,30 @@ def test_roundtrip_through_provider(tmp_path):
     assert n == 2
     items = AG2PrecomputedProvider(p).fetch(VariantQuery(rsid="rs1"))
     assert items[0].gene == "A" and items[0].extras["_called"] == 1.0
+
+
+def test_ag2_expression_rows_match_on_coordinates():
+    from variant_evidence.convert import normalise_ag2_expression
+
+    c2r = {("6", 100, "A", "G"): "rs9"}
+    base = dict(chromosome="chr6", position=100, ref="A", alt="G", gene_name="G1",
+                biosample_name="T cell", channel_name="chA",
+                sc_gene_expression_score=0.4, sc_gene_expression_active_score=2.1)
+    rows = [
+        base,
+        dict(base, position=101),                                   # different variant: skipped
+        dict(base, channel_name="denoised", sc_gene_expression_active_score=float("nan")),  # no active score
+    ]
+    out = list(normalise_ag2_expression(rows, c2r))
+    assert out == [{"variant": "rs9", "gene": "G1", "condition": "T cell (chA)", "lfc": 0.4, "log_cpm": 2.1}]
+
+
+def test_parse_ensembl_snv_grch38_only():
+    from variant_evidence.resolve import parse_ensembl_variation
+
+    payload = {"rs9": {"mappings": [
+        {"assembly_name": "GRCh38", "seq_region_name": "6", "start": 100, "end": 100, "allele_string": "A/G/T"},
+        {"assembly_name": "GRCh37", "seq_region_name": "6", "start": 50, "end": 50, "allele_string": "A/G"},
+        {"assembly_name": "GRCh38", "seq_region_name": "6", "start": 7, "end": 8, "allele_string": "AT/A"},
+    ]}}
+    assert parse_ensembl_variation(payload)["rs9"] == [("6", 100, "A", "G"), ("6", 100, "A", "T")]
