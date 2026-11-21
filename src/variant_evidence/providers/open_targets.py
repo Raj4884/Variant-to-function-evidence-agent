@@ -141,6 +141,21 @@ def field_types(type_name: str) -> dict[str, str]:
     return {f["name"]: _base_type(f["type"]) for f in t["fields"]}
 
 
+_FIELD_ARGS = """
+query ($name: String!) { __type(name: $name) { fields { name args { name type { name kind
+  ofType { name kind ofType { name kind ofType { name kind } } } } } } } }
+"""
+
+
+def field_args(type_name: str, field: str) -> dict[str, str]:
+    """{argument name: underlying type name} for one field, e.g. field_args('Variant', 'credibleSets')."""
+    t = _post(_FIELD_ARGS, {"name": type_name})["__type"]
+    for f in (t or {}).get("fields", []):
+        if f["name"] == field:
+            return {a["name"]: _base_type(a["type"]) for a in f["args"]}
+    raise RuntimeError(f"{type_name}.{field} not found")
+
+
 def resolve_variant_id(rsid: str) -> str:
     """Open Targets keys variants by chr_pos_ref_alt, not rsID."""
     hits = _post(SEARCH_QUERY, {"q": rsid})["search"]["hits"]

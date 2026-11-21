@@ -145,3 +145,17 @@ def test_l2g_agreement_note_is_added():
                               cell_type="liver", value=0.4, extras={"_called": 1.0, "log_cpm": 3.0}))
     (h,) = rank_genes(items)
     assert any("prefers PSRC1" in n for n in h.notes)
+
+
+def test_high_confidence_is_capped_when_l2g_prefers_another_gene():
+    from variant_evidence.aggregator import rank_genes
+    from variant_evidence.models import Confidence
+    from variant_evidence.providers.open_targets import parse_credible_sets
+
+    items = parse_credible_sets("rs7", [{"study_id": "S", "trait": "t", "pip": 0.99,
+                                         "l2g": [{"gene": "OTHER", "score": 0.8}]}])
+    items.append(EvidenceItem(id="a", source="ag2_precomputed", kind="variant_effect", gene="G",
+                              cell_type="x", value=0.5, extras={"_called": 1.0, "log_cpm": 3.0}))
+    assert rank_genes(items)[0].confidence == Confidence.MEDIUM
+    items[1] = items[1].model_copy(update={"gene": "G", "id": "ot:l2g:rs7:S:G"})   # now L2G agrees
+    assert rank_genes(items)[0].confidence == Confidence.HIGH

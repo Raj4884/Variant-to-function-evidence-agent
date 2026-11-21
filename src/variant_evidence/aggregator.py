@@ -16,6 +16,8 @@ DOMINANCE_RATIO = 2.0  # top gene must beat the runner-up by this factor for HIG
 # If the runner-up scores at least this fraction of the top gene, the locus is treated as multi-gene:
 # the top gene is not singled out and confidence is capped at LOW. Heuristic, not calibrated.
 AMBIGUITY_RATIO = 0.75
+# Open Targets L2G counts as "preferring another gene" only if its score is at least this high.
+L2G_DISAGREE_MIN = 0.5
 
 
 def _direction(lfc: float) -> Direction:
@@ -75,9 +77,14 @@ def rank_genes(items: list[EvidenceItem]) -> list[GeneHypothesis]:
         )
     hyps.sort(key=lambda h: h.score, reverse=True)
 
+    l2g_disagrees = bool(
+        hyps and l2g_best is not None and l2g_best.gene != hyps[0].gene and l2g_best.value >= L2G_DISAGREE_MIN
+    )
     for idx, h in enumerate(hyps):
         runner_up = hyps[1].score if idx == 0 and len(hyps) > 1 else None
         h.confidence = _confidence(idx, h, pip, runner_up)
+        if idx == 0 and l2g_disagrees and h.confidence == Confidence.HIGH:
+            h.confidence = Confidence.MEDIUM   # two sources disagree on the gene: never HIGH
     if len(hyps) > 1 and hyps[1].score >= AMBIGUITY_RATIO * hyps[0].score:
         close = [h for h in hyps[1:] if h.score >= AMBIGUITY_RATIO * hyps[0].score]
         hyps[0].confidence = Confidence.LOW
