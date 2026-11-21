@@ -92,6 +92,26 @@ def introspect(type_name: str = "Variant") -> list[str]:
     return [f["name"] for f in t["fields"]]
 
 
+_TYPE_FIELDS = """
+query ($name: String!) { __type(name: $name) { fields { name type { name kind ofType { name kind
+  ofType { name kind ofType { name kind ofType { name kind } } } } } } } }
+"""
+
+
+def _base_type(t: dict) -> str:
+    while t and t.get("ofType"):
+        t = t["ofType"]
+    return (t or {}).get("name") or "?"
+
+
+def field_types(type_name: str) -> dict[str, str]:
+    """{field name: underlying type name} for a GraphQL type. Used to walk the live schema."""
+    t = _post(_TYPE_FIELDS, {"name": type_name})["__type"]
+    if t is None:
+        raise RuntimeError(f"type {type_name!r} not found")
+    return {f["name"]: _base_type(f["type"]) for f in t["fields"]}
+
+
 def resolve_variant_id(rsid: str) -> str:
     """Open Targets keys variants by chr_pos_ref_alt, not rsID."""
     hits = _post(SEARCH_QUERY, {"q": rsid})["search"]["hits"]

@@ -54,9 +54,10 @@ def rank_genes(items: list[EvidenceItem]) -> list[GeneHypothesis]:
         notes = []
         if len(signs) > 1:
             same = sum(1 for e in evs if _direction(e.value) == _direction(top.value))
+            label = "Direction is mixed" if same / len(evs) < 0.8 else "Minority of conditions disagree on direction"
             notes.append(
-                f"Direction is mixed (opposite effects by cell type): {same} of {len(evs)} called conditions "
-                f"share the top direction ({_direction(top.value).value})."
+                f"{label}: {same} of {len(evs)} called conditions share the top direction "
+                f"({_direction(top.value).value}); the rest are opposite."
             )
         hyps.append(
             GeneHypothesis(
