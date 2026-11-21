@@ -71,10 +71,28 @@ def run_agent(
     query: VariantQuery,
     providers: list[EvidenceProvider],
     synthesizer: Optional[Synthesizer] = None,
+    context: Optional[list[str]] = None,
 ) -> Report:
+    """context: optional cell-type / tissue terms (e.g. ["hepatocyte"]). Variant-effect evidence is
+    restricted to conditions whose name contains one of them, so ranking answers "which gene moves in
+    the relevant cell type" instead of "in any of ~500 conditions"."""
     items: list[EvidenceItem] = []
     for p in providers:
         items += p.fetch(query)
+    extra_caveats: list[str] = []
+    if context:
+        terms = [t.lower() for t in context]
+        before = sum(1 for i in items if i.kind == "variant_effect")
+        items = [i for i in items if i.kind != "variant_effect" or any(t in (i.cell_type or "").lower() for t in terms)]
+        extra_caveats.append(f"Ranking restricted to conditions matching {context} "
+                             f"({sum(1 for i in items if i.kind == 'variant_effect')} of {before} variant-effect records).")
+    if not any(i.kind == "variant_effect" for i in items):
+        for p in providers:
+            st = getattr(p, "status", lambda r: "unknown")(query.rsid)
+            if st == "not_in_panel":
+                extra_caveats.append("Variant is not in the AG2 variant panel: it was never scored.")
+            elif st == "scored_no_effect":
+                extra_caveats.append("Variant was scored by AG2 but no protein-coding gene effect exceeded the release filter (|score| > 0.05).")
     hyps = rank_genes(items)
     candidates = (synthesizer or template_synthesizer)(hyps, items)
     kept, dropped = verify(candidates, items)
@@ -82,7 +100,7 @@ def run_agent(
         query=query,
         hypotheses=hyps,
         claims=kept,
-        caveats=standing_caveats(items, hyps),
+        caveats=standing_caveats(items, hyps) + extra_caveats,
         dropped_claims=len(dropped),
         evidence=items,
     )

@@ -13,6 +13,9 @@ from .models import Confidence, Direction, EvidenceItem, GeneHypothesis
 HIGH_PIP = 0.9
 HIGH_EFFECT = 0.2
 DOMINANCE_RATIO = 2.0  # top gene must beat the runner-up by this factor for HIGH
+# If the runner-up scores at least this fraction of the top gene, the locus is treated as multi-gene:
+# the top gene is not singled out and confidence is capped at LOW. Heuristic, not calibrated.
+AMBIGUITY_RATIO = 0.75
 
 
 def _direction(lfc: float) -> Direction:
@@ -68,6 +71,14 @@ def rank_genes(items: list[EvidenceItem]) -> list[GeneHypothesis]:
     for idx, h in enumerate(hyps):
         runner_up = hyps[1].score if idx == 0 and len(hyps) > 1 else None
         h.confidence = _confidence(idx, h, pip, runner_up)
+    if len(hyps) > 1 and hyps[1].score >= AMBIGUITY_RATIO * hyps[0].score:
+        close = [h for h in hyps[1:] if h.score >= AMBIGUITY_RATIO * hyps[0].score]
+        hyps[0].confidence = Confidence.LOW
+        hyps[0].notes.append(
+            "Multi-gene locus: " + ", ".join(f"{h.gene} ({h.score:.2f})" for h in close)
+            + f" score within {AMBIGUITY_RATIO:.0%} of {hyps[0].gene} ({hyps[0].score:.2f}); "
+            "effect size alone does not identify the causal gene."
+        )
     return hyps
 
 

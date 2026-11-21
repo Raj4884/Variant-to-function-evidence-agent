@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Iterable, Iterator
 
 NORMALISED = ["variant", "gene", "condition", "lfc", "log_cpm"]
+OUT_COLUMNS = NORMALISED + ["n_channels", "n_agree"]
 
 
 def normalise_rows(
@@ -67,8 +68,8 @@ def normalise_ag2_expression(
     """Convert rows of AG2 `variant_scores_sc_gene_expression.parquet` (columns per the release README).
 
     - Variants are matched on (chromosome, position, ref, alt); the file has no rsIDs.
-    - The file lists several channels (assay pipelines) per biosample; each channel becomes its own
-      condition, named "<biosample> (<channel>)", so evidence ids stay unique.
+    - The file lists several channels (assay pipelines) per biosample. Rows keep their channel here;
+      pass them through collapse_channels() so one cell type counts once, not once per assay.
     - Rows without an active score (the 'denoised' channel) are skipped: the paper's call rule needs
       log(CPM+1) > 1.5 and it cannot be checked for them.
     - README says the score is a "log fold change"; base is unconfirmed. Pass lfc_scale=math.log(2) if log2.
@@ -89,16 +90,41 @@ def normalise_ag2_expression(
         yield {
             "variant": rsid,
             "gene": str(row["gene_name"]),
-            "condition": f"{row['biosample_name']} ({row['channel_name']})",
+            "condition": str(row["biosample_name"]),
+            "channel": str(row["channel_name"]),
             "lfc": lfc,
             "log_cpm": log_cpm,
+        }
+
+
+def collapse_channels(rows: Iterable[dict], min_agree_abs: float = 0.05) -> Iterator[dict]:
+    """One row per (variant, gene, cell type): median across assay channels.
+
+    n_channels = channels that scored it; n_agree = channels with the same sign as the median and
+    |LFC| >= min_agree_abs. The paper's call rule is applied later to these medians, which is stricter
+    than "any channel passes". Channel agreement is a robustness signal, reported with the evidence.
+    """
+    import statistics
+    from collections import defaultdict
+
+    groups: dict[tuple[str, str, str], list[dict]] = defaultdict(list)
+    for r in rows:
+        groups[(r["variant"], r["gene"], r["condition"])].append(r)
+    for (variant, gene, cond), rs in groups.items():
+        med = statistics.median(r["lfc"] for r in rs)
+        sign = 1 if med > 0 else -1
+        agree = sum(1 for r in rs if r["lfc"] * sign >= min_agree_abs)
+        yield {
+            "variant": variant, "gene": gene, "condition": cond,
+            "lfc": med, "log_cpm": statistics.median(r["log_cpm"] for r in rs),
+            "n_channels": len(rs), "n_agree": agree,
         }
 
 
 def write_normalised_csv(rows: Iterable[dict], out_path: str | Path) -> int:
     n = 0
     with Path(out_path).open("w", newline="") as fh:
-        w = csv.DictWriter(fh, fieldnames=NORMALISED)
+        w = csv.DictWriter(fh, fieldnames=OUT_COLUMNS, extrasaction="ignore", restval="")
         w.writeheader()
         for r in rows:
             w.writerow(r)

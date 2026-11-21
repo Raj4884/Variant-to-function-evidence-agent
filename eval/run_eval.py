@@ -50,7 +50,9 @@ def evaluate(gold_path: str, ag2_csv: str, ot_json: str | None, synthesizer=None
             continue
         top = rep.hypotheses[0]
         gene_ok = top.gene == g["gene"]
-        dir_ok = gene_ok and top.direction.value == g["direction"]
+        dir_known = g.get("direction") is not None
+        dir_ok = dir_known and gene_ok and top.direction.value == g["direction"]
+        t["direction_n"] += dir_known
         ct_ok = any(c.lower() in " ".join(top.top_cell_types).lower() for c in g["cell_types"])
         t["top_gene_hit"] += gene_ok
         t["direction_hit"] += dir_ok
@@ -73,7 +75,7 @@ def main() -> None:
         n = t["n"]
         total_claims = t["claims_kept"] + t["claims_dropped"]
         drop = t["claims_dropped"] / total_claims if total_claims else 0.0
-        print(f"[{split}] n={n} top_gene={t.get('top_gene_hit', 0)}/{n} direction={t.get('direction_hit', 0)}/{n} "
+        print(f"[{split}] n={n} top_gene={t.get('top_gene_hit', 0)}/{n} direction={t.get('direction_hit', 0)}/{t.get('direction_n', 0)} "
               f"cell_type={t.get('cell_type_hit', 0)}/{n} abstained={t.get('abstained', 0)} claim_drop_rate={drop:.2f}")
 
 

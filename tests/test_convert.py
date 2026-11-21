@@ -55,7 +55,7 @@ def test_ag2_expression_rows_match_on_coordinates():
         dict(base, channel_name="denoised", sc_gene_expression_active_score=float("nan")),  # no active score
     ]
     out = list(normalise_ag2_expression(rows, c2r))
-    assert out == [{"variant": "rs9", "gene": "G1", "condition": "T cell (chA)", "lfc": 0.4, "log_cpm": 2.1}]
+    assert out == [{"variant": "rs9", "gene": "G1", "condition": "T cell", "channel": "chA", "lfc": 0.4, "log_cpm": 2.1}]
 
 
 def test_parse_ensembl_snv_grch38_only():
@@ -67,3 +67,46 @@ def test_parse_ensembl_snv_grch38_only():
         {"assembly_name": "GRCh38", "seq_region_name": "6", "start": 7, "end": 8, "allele_string": "AT/A"},
     ]}}
     assert parse_ensembl_variation(payload)["rs9"] == [("6", 100, "A", "G"), ("6", 100, "A", "T")]
+
+
+def test_collapse_channels_uses_median_and_counts_agreement(tmp_path):
+    from variant_evidence.convert import collapse_channels
+
+    rows = [dict(variant="rs9", gene="G", condition="T cell", channel=c, lfc=l, log_cpm=2.0)
+            for c, l in [("a", 0.30), ("b", 0.20), ("c", -0.10), ("d", 0.25)]]
+    (out,) = collapse_channels(rows)
+    assert out["n_channels"] == 4 and out["n_agree"] == 3
+    assert out["lfc"] == 0.225
+
+
+def test_provider_reports_channels_and_panel_status(tmp_path):
+    p = tmp_path / "n.csv"
+    rows = [dict(variant="rs1", gene="G", condition="T cell", channel=c, lfc=0.4, log_cpm=2.5) for c in "abc"]
+    from variant_evidence.convert import collapse_channels
+    write_normalised_csv(collapse_channels(rows), p)
+    prov = AG2PrecomputedProvider(p, scored_rsids={"rs1", "rs2"})
+    (item,) = prov.fetch(VariantQuery(rsid="rs1"))
+    assert item.extras["n_channels"] == 3.0 and "3 agree" in item.detail
+    assert prov.status("rs1") == "has_rows"
+    assert prov.status("rs2") == "scored_no_effect"
+    assert prov.status("rs3") == "not_in_panel"
+
+
+def test_multigene_locus_is_not_singled_out_and_context_filters(tmp_path):
+    from variant_evidence.agent import run_agent
+    from variant_evidence.models import Confidence
+
+    rows = []
+    for g, l in [("CELSR2", 1.0), ("PSRC1", 0.9), ("SORT1", 0.4)]:
+        rows.append(dict(variant="rs7", gene=g, condition="liver hepatocyte", lfc=l, log_cpm=3.0))
+    rows.append(dict(variant="rs7", gene="OTHER", condition="lung cell", lfc=1.5, log_cpm=3.0))
+    p = tmp_path / "n.csv"
+    write_normalised_csv(rows, p)
+    prov = AG2PrecomputedProvider(p)
+    rep = run_agent(VariantQuery(rsid="rs7"), [prov])
+    assert rep.hypotheses[0].gene == "OTHER"                     # tissue-agnostic ranking
+    rep = run_agent(VariantQuery(rsid="rs7"), [prov], context=["hepatocyte"])
+    top = rep.hypotheses[0]
+    assert top.gene == "CELSR2" and top.confidence == Confidence.LOW
+    assert any("Multi-gene locus" in n and "PSRC1" in n for n in top.notes)
+    assert any("restricted" in c for c in rep.caveats)

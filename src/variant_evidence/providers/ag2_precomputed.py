@@ -37,7 +37,10 @@ LOG_CPM_THRESHOLD = 1.5
 class AG2PrecomputedProvider:
     name = "ag2_precomputed"
 
-    def __init__(self, csv_path: str | Path):
+    def __init__(self, csv_path: str | Path, scored_rsids: set[str] | None = None):
+        """scored_rsids: rsIDs confirmed present in the AG2 variant panel (optional). Lets the agent tell
+        "not scored at all" from "scored, no gene effect above the release filter"."""
+        self.scored_rsids = scored_rsids
         self.csv_path = Path(csv_path)
         self._index: dict[str, list[dict]] = defaultdict(list)
         self._load()
@@ -51,6 +54,13 @@ class AG2PrecomputedProvider:
             for row in reader:
                 self._index[row[COLUMN_MAP["variant"]]].append(row)
 
+    def status(self, rsid: str) -> str:
+        if rsid in self._index:
+            return "has_rows"
+        if self.scored_rsids is None:
+            return "unknown"
+        return "scored_no_effect" if rsid in self.scored_rsids else "not_in_panel"
+
     def fetch(self, query: VariantQuery) -> list[EvidenceItem]:
         items: list[EvidenceItem] = []
         for row in self._index.get(query.rsid, []):
@@ -59,6 +69,12 @@ class AG2PrecomputedProvider:
             called = abs(lfc) > LFC_THRESHOLD and log_cpm > LOG_CPM_THRESHOLD
             gene = row[COLUMN_MAP["gene"]]
             cond = row[COLUMN_MAP["condition"]]
+            extras = {"log_cpm": log_cpm, "_called": 1.0 if called else 0.0}
+            chan = ""
+            if row.get("n_channels"):
+                n_ch, n_ag = int(float(row["n_channels"])), int(float(row["n_agree"]))
+                extras["n_channels"], extras["n_agree"] = float(n_ch), float(n_ag)
+                chan = f" Median over {n_ch} assay channels; {n_ag} agree in direction."
             items.append(
                 EvidenceItem(
                     id=f"ag2:{query.rsid}:{gene}:{cond}",
@@ -71,9 +87,9 @@ class AG2PrecomputedProvider:
                         f"AG2 predicts {query.rsid} changes {gene} expression in {cond} "
                         f"by log fold change {lfc:+.2f} (predicted log(CPM+1) {log_cpm:.2f}); "
                         f"{'passes' if called else 'does not pass'} the paper's call thresholds "
-                        f"(|LFC|>{LFC_THRESHOLD}, log(CPM+1)>{LOG_CPM_THRESHOLD})."
+                        f"(|LFC|>{LFC_THRESHOLD}, log(CPM+1)>{LOG_CPM_THRESHOLD})." + chan
                     ),
-                    extras={"log_cpm": log_cpm, "_called": 1.0 if called else 0.0},
+                    extras=extras,
                 )
             )
         return items

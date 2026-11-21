@@ -17,6 +17,7 @@ def main() -> None:
     ap.add_argument("--ot", help="offline Open Targets JSON")
     ap.add_argument("--llm", action="store_true", help="use Claude for claim wording (needs ANTHROPIC_API_KEY)")
     ap.add_argument("--model", default="claude-sonnet-5-5")
+    ap.add_argument("--context", nargs="+", help="restrict to cell types/tissues containing these terms")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
 
@@ -31,7 +32,7 @@ def main() -> None:
             raise SystemExit("ANTHROPIC_API_KEY is not set")
         synth = llm_synthesizer(anthropic.Anthropic(), a.model)
 
-    report = run_agent(VariantQuery(rsid=a.rsid), providers, synth)
+    report = run_agent(VariantQuery(rsid=a.rsid), providers, synth, context=a.context)
     if a.json:
         print(report.model_dump_json(indent=2))
         return
