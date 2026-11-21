@@ -42,6 +42,8 @@ def rank_genes(items: list[EvidenceItem]) -> list[GeneHypothesis]:
         by_gene[i.gene].append(i)
 
     pip, pip_ids = best_pip(items)
+    l2g = [i for i in items if i.kind == "l2g" and i.gene and i.value is not None]
+    l2g_best = max(l2g, key=lambda i: i.value) if l2g else None
     hyps: list[GeneHypothesis] = []
     for gene, evs in by_gene.items():
         evs.sort(key=lambda e: abs(e.value), reverse=True)
@@ -84,6 +86,15 @@ def rank_genes(items: list[EvidenceItem]) -> list[GeneHypothesis]:
             + f" score within {AMBIGUITY_RATIO:.0%} of {hyps[0].gene} ({hyps[0].score:.2f}); "
             "effect size alone does not identify the causal gene."
         )
+    if hyps and l2g_best is not None:
+        top = hyps[0]
+        top_l2g = max((i.value for i in l2g if i.gene == top.gene), default=None)
+        if l2g_best.gene == top.gene:
+            top.notes.append(f"Open Targets L2G also ranks {top.gene} first ({l2g_best.value:.2f}).")
+        else:
+            seen = f" (L2G score for {top.gene}: {top_l2g:.2f})" if top_l2g is not None else ""
+            top.notes.append(f"Open Targets L2G prefers {l2g_best.gene} ({l2g_best.value:.2f}), a different gene{seen}.")
+        top.evidence_ids.append(l2g_best.id)
     return hyps
 
 

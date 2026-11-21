@@ -2,6 +2,7 @@ import math
 
 import pytest
 
+from variant_evidence.models import EvidenceItem
 from variant_evidence.convert import normalise_rows, write_normalised_csv
 from variant_evidence.models import VariantQuery
 from variant_evidence.providers.ag2_precomputed import AG2PrecomputedProvider
@@ -110,3 +111,37 @@ def test_multigene_locus_is_not_singled_out_and_context_filters(tmp_path):
     assert top.gene == "CELSR2" and top.confidence == Confidence.LOW
     assert any("Multi-gene locus" in n and "PSRC1" in n for n in top.notes)
     assert any("restricted" in c for c in rep.caveats)
+
+
+def test_open_targets_live_response_uses_this_variants_pip_and_l2g():
+    from variant_evidence.baselines import l2g_top_gene
+    from variant_evidence.providers.open_targets import parse_credible_sets, rows_from_response
+
+    vid = "1_100_A_G"
+    data = {"variant": {"credibleSets": {"count": 1, "rows": [{
+        "studyLocusId": "L1", "studyId": "S1", "studyType": "gwas", "finemappingMethod": "SuSiE",
+        "study": {"traitFromSource": "LDL"},
+        "locus": {"count": 2, "rows": [
+            {"posteriorProbability": 0.99, "variant": {"id": "1_999_C_T"}},   # another variant in the set
+            {"posteriorProbability": 0.40, "variant": {"id": vid}},
+        ]},
+        "l2GPredictions": {"rows": [{"score": 0.8, "target": {"id": "E1", "approvedSymbol": "SORT1"}},
+                                    {"score": 0.1, "target": {"id": "E2", "approvedSymbol": "PSRC1"}}]},
+    }]}}}
+    rows = rows_from_response(data, vid)
+    assert rows[0]["pip"] == 0.40                     # not the set maximum
+    items = parse_credible_sets("rs7", rows)
+    assert l2g_top_gene(items) == ("SORT1", 0.8)
+    assert {i.kind for i in items} == {"credible_set", "l2g"}
+
+
+def test_l2g_agreement_note_is_added():
+    from variant_evidence.aggregator import rank_genes
+    from variant_evidence.providers.open_targets import parse_credible_sets
+
+    items = parse_credible_sets("rs7", [{"study_id": "S", "trait": "t", "pip": 0.5,
+                                         "l2g": [{"gene": "PSRC1", "score": 0.7}]}])
+    items.append(EvidenceItem(id="a", source="ag2_precomputed", kind="variant_effect", gene="SORT1",
+                              cell_type="liver", value=0.4, extras={"_called": 1.0, "log_cpm": 3.0}))
+    (h,) = rank_genes(items)
+    assert any("prefers PSRC1" in n for n in h.notes)

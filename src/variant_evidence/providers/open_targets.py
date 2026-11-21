@@ -3,8 +3,7 @@
 STATUS: the parser is tested against a fixture; the live GraphQL query has NOT been
 run. The sandbox that built this project could not reach the API, and the exact field
 names below are from memory of the Platform schema. Before relying on it, run
-`scripts/check_open_targets.py` (to be written) against the live API and fix
-CREDIBLE_SET_QUERY and `parse_credible_sets` to match the real schema.
+the Colab notebook against the live API; see the note above CREDIBLE_SET_QUERY for what is confirmed.
 
 The transport is injected so tests and offline runs never touch the network.
 """
@@ -16,12 +15,21 @@ from ..models import EvidenceItem, VariantQuery
 
 ENDPOINT = "https://api.platform.opentargets.org/api/v4/graphql"
 
-# UNVERIFIED against the live schema. See module docstring.
+# Field names below were confirmed by walking the live schema (CredibleSets, CredibleSet, Loci, Locus,
+# L2GPredictions, L2GPrediction, Study). NOT confirmed: Target.approvedSymbol, and whether credibleSets
+# is paginated by default (rows are compared with `count` and a warning is raised if they differ).
 CREDIBLE_SET_QUERY = """
 query ($variantId: String!) {
   variant(variantId: $variantId) {
-    credibleSets { rows { studyId studyLocusId finemappingMethod
-      locus { rows { posteriorProbability } } study { traitFromSource } } }
+    credibleSets {
+      count
+      rows {
+        studyLocusId studyId studyType finemappingMethod
+        study { traitFromSource }
+        locus { count rows { posteriorProbability variant { id } } }
+        l2GPredictions { rows { score target { id approvedSymbol } } }
+      }
+    }
   }
 }
 """
@@ -30,13 +38,18 @@ Transport = Callable[[VariantQuery], list[dict]]
 
 
 def parse_credible_sets(rsid: str, rows: list[dict]) -> list[EvidenceItem]:
-    """rows: [{"study_id", "trait", "pip", "method"}] (normalised shape)."""
+    """rows: [{"study_id", "trait", "pip", "method", optional "study_locus_id", "l2g": [{"gene", "score"}]}].
+
+    One credible_set item per row (pip = this variant's posterior inclusion probability) and up to
+    three "l2g" items per row (Open Targets' locus-to-gene scores for that credible set).
+    """
     items = []
     for r in rows:
         pip = float(r["pip"])
+        key = r.get("study_locus_id") or r["study_id"]
         items.append(
             EvidenceItem(
-                id=f"ot:{rsid}:{r['study_id']}",
+                id=f"ot:{rsid}:{key}",
                 source="open_targets",
                 kind="credible_set",
                 value=pip,
@@ -47,6 +60,22 @@ def parse_credible_sets(rsid: str, rows: list[dict]) -> list[EvidenceItem]:
                 extras={"pip": pip},
             )
         )
+        for g in sorted(r.get("l2g", []), key=lambda g: -g["score"])[:3]:
+            score = float(g["score"])
+            items.append(
+                EvidenceItem(
+                    id=f"ot:l2g:{rsid}:{key}:{g['gene']}",
+                    source="open_targets",
+                    kind="l2g",
+                    gene=g["gene"],
+                    value=score,
+                    detail=(
+                        f"Open Targets locus-to-gene model scores {g['gene']} {score:.2f} for the credible set "
+                        f"of '{r['trait']}' (study {r['study_id']}) that contains {rsid}."
+                    ),
+                    extras={"l2g_score": score},
+                )
+            )
     return items
 
 
@@ -121,24 +150,38 @@ def resolve_variant_id(rsid: str) -> str:
     return variants[0]
 
 
-def rows_from_response(data: dict) -> list[dict]:
-    """Map the (guessed) response shape to normalised rows. Fix this after introspecting."""
+def rows_from_response(data: dict, variant_id: str) -> list[dict]:
+    """Map the live response to normalised rows. pip is THIS variant's posterior inclusion probability
+    (the locus lists every variant in the credible set, so it must be picked out by id)."""
+    import warnings
+
     try:
-        sets = data["variant"]["credibleSets"]["rows"]
+        cs = data["variant"]["credibleSets"]
+        if cs["count"] > len(cs["rows"]):
+            warnings.warn(f"Open Targets returned {len(cs['rows'])} of {cs['count']} credible sets for {variant_id}")
         out = []
-        for s in sets:
-            pips = [r["posteriorProbability"] for r in s["locus"]["rows"]]
+        for s in cs["rows"]:
+            mine = [r["posteriorProbability"] for r in s["locus"]["rows"] if r["variant"]["id"] == variant_id]
+            if not mine or mine[0] is None:
+                continue
             out.append({
+                "study_locus_id": s["studyLocusId"],
                 "study_id": s["studyId"],
-                "trait": s["study"]["traitFromSource"],
-                "pip": max(pips),
-                "method": s.get("finemappingMethod", "fine-mapped"),
+                "trait": (s.get("study") or {}).get("traitFromSource") or s.get("studyType") or "unknown trait",
+                "pip": mine[0],
+                "method": s.get("finemappingMethod") or "fine-mapped",
+                "study_type": s.get("studyType"),
+                "l2g": [
+                    {"gene": p["target"]["approvedSymbol"], "score": p["score"]}
+                    for p in (s.get("l2GPredictions") or {}).get("rows", [])
+                    if p.get("target") and p["target"].get("approvedSymbol") and p.get("score") is not None
+                ],
             })
         return out
     except (KeyError, TypeError) as exc:
         raise RuntimeError(
             f"Open Targets response did not match the expected shape ({exc!r}). "
-            "Run introspect() and update CREDIBLE_SET_QUERY and rows_from_response()."
+            "Update CREDIBLE_SET_QUERY and rows_from_response()."
         ) from exc
 
 
@@ -147,7 +190,7 @@ def http_transport() -> Transport:
 
     def run(q: VariantQuery) -> list[dict]:
         vid = resolve_variant_id(q.rsid)
-        return rows_from_response(_post(CREDIBLE_SET_QUERY, {"variantId": vid}))
+        return rows_from_response(_post(CREDIBLE_SET_QUERY, {"variantId": vid}), vid)
 
     return run
 
