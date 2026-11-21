@@ -30,7 +30,7 @@ from variant_evidence.providers.ag2_precomputed import AG2PrecomputedProvider  #
 from variant_evidence.providers.open_targets import OpenTargetsProvider, json_file_transport  # noqa: E402
 
 
-def evaluate(gold_path: str, ag2_csv: str, ot_json: str | None, synthesizer=None) -> dict:
+def evaluate(gold_path: str, ag2_csv: str, ot_json: str | None, synthesizer=None, use_context: bool = False) -> dict:
     gold = yaml.safe_load(Path(gold_path).read_text())["loci"]
     providers = [AG2PrecomputedProvider(ag2_csv)]
     if ot_json:
@@ -39,7 +39,8 @@ def evaluate(gold_path: str, ag2_csv: str, ot_json: str | None, synthesizer=None
     tally: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     rows = []
     for g in gold:
-        rep = run_agent(VariantQuery(rsid=g["rsid"]), providers, synthesizer)
+        rep = run_agent(VariantQuery(rsid=g["rsid"]), providers, synthesizer,
+                        context=g.get("context") if use_context else None)
         t = tally[g["split"]]
         t["n"] += 1
         t["claims_kept"] += len(rep.claims)
@@ -67,16 +68,19 @@ def main() -> None:
     ap.add_argument("--ag2", required=True)
     ap.add_argument("--ot")
     a = ap.parse_args()
-    res = evaluate(a.gold, a.ag2, a.ot)
-    for r in res["rows"]:
-        print("{:<12} {:<8} {:<8} {}".format(*r))
-    print()
-    for split, t in res["tally"].items():
-        n = t["n"]
-        total_claims = t["claims_kept"] + t["claims_dropped"]
-        drop = t["claims_dropped"] / total_claims if total_claims else 0.0
-        print(f"[{split}] n={n} top_gene={t.get('top_gene_hit', 0)}/{n} direction={t.get('direction_hit', 0)}/{t.get('direction_n', 0)} "
-              f"cell_type={t.get('cell_type_hit', 0)}/{n} abstained={t.get('abstained', 0)} claim_drop_rate={drop:.2f}")
+    for label, ctx in (("TISSUE-AGNOSTIC", False), ("WITH TRAIT CONTEXT (loci that define one)", True)):
+        res = evaluate(a.gold, a.ag2, a.ot, use_context=ctx)
+        print(f"=== {label} ===")
+        for r in res["rows"]:
+            print("{:<12} {:<8} {:<8} {}".format(*r))
+        print()
+        for split, t in res["tally"].items():
+            n = t["n"]
+            total_claims = t["claims_kept"] + t["claims_dropped"]
+            drop = t["claims_dropped"] / total_claims if total_claims else 0.0
+            print(f"[{split}] n={n} top_gene={t.get('top_gene_hit', 0)}/{n} direction={t.get('direction_hit', 0)}/{t.get('direction_n', 0)} "
+                  f"cell_type={t.get('cell_type_hit', 0)}/{n} abstained={t.get('abstained', 0)} claim_drop_rate={drop:.2f}")
+        print()
 
 
 if __name__ == "__main__":

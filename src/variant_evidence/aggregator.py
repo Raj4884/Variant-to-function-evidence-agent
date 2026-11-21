@@ -53,7 +53,11 @@ def rank_genes(items: list[EvidenceItem]) -> list[GeneHypothesis]:
         signs = {_direction(e.value) for e in evs}
         notes = []
         if len(signs) > 1:
-            notes.append("Predicted direction differs between conditions (opposite effects by cell type).")
+            same = sum(1 for e in evs if _direction(e.value) == _direction(top.value))
+            notes.append(
+                f"Direction is mixed (opposite effects by cell type): {same} of {len(evs)} called conditions "
+                f"share the top direction ({_direction(top.value).value})."
+            )
         hyps.append(
             GeneHypothesis(
                 gene=gene,

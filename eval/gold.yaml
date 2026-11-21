@@ -9,6 +9,9 @@
 # direction = effect of the ALT allele (hg38 ref>alt, as scored by AG2) on target gene expression.
 #   null = not verified; those loci are left out of the direction metric.
 #   Directions were written from memory and NOT checked against the paper, except where noted.
+# context = tissue terms implied by the TRAIT the variant is associated with (LDL/CAD -> liver, BMI -> adipose).
+#   Only set where the trait makes the tissue obvious; used by the "with trait context" evaluation.
+#   Deliberately broader than the expected cell type ('liver', not 'hepatocyte').
 # cell_types = lowercase substrings that count as a hit. The synonym lists (e.g. 'type ii pneumocyte' for AT2,
 #   'esc' for endometrial stromal cell) were added AFTER seeing AG2 output, by biological equivalence.
 #   Treat cell_type_hit as descriptive, not as an unbiased metric. Proper fix: Cell Ontology ids.
@@ -22,5 +25,5 @@ loci:
   - {rsid: rs13066062, gene: CXCR6,  cell_types: [cd8, nk, t cell],           direction: down, split: paper_example}
   - {rsid: rs35705950, gene: MUC5B,  cell_types: [at2, type ii pneumocyte],                   direction: up,   split: paper_example}
   - {rsid: rs3820282,  gene: WNT4,   cell_types: [stromal, esc],               direction: up,   split: paper_example}
-  - {rsid: rs1421085,  gene: IRX3,   cell_types: [preadipocyte],          direction: up,   split: heldout_candidate}
-  - {rsid: rs12740374, gene: SORT1,  cell_types: [hepatocyte],            direction: up,   split: heldout_candidate}
+  - {rsid: rs1421085,  gene: IRX3,   cell_types: [preadipocyte],          direction: up,   split: heldout_candidate, context: [adipo]}
+  - {rsid: rs12740374, gene: SORT1,  cell_types: [hepatocyte],            direction: up,   split: heldout_candidate, context: [liver]}
