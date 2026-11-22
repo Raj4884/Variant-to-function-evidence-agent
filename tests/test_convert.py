@@ -159,3 +159,25 @@ def test_high_confidence_is_capped_when_l2g_prefers_another_gene():
     assert rank_genes(items)[0].confidence == Confidence.MEDIUM
     items[1] = items[1].model_copy(update={"gene": "G", "id": "ot:l2g:rs7:S:G"})   # now L2G agrees
     assert rank_genes(items)[0].confidence == Confidence.HIGH
+
+
+def test_fetch_all_credible_sets_pages_until_count_reached():
+    from variant_evidence.providers.open_targets import fetch_all_credible_sets
+
+    vid = "1_100_A_G"
+
+    def row(i):
+        return {"studyLocusId": f"L{i}", "studyId": f"S{i}", "studyType": "gwas", "finemappingMethod": "SuSiE",
+                "study": {"traitFromSource": "t"}, "l2GPredictions": {"rows": []},
+                "locus": {"count": 1, "rows": [{"posteriorProbability": 0.5, "variant": {"id": vid}}]}}
+
+    calls = []
+
+    def post(q, v):
+        calls.append(v["idx"])
+        pages = {0: [row(1), row(2)], 1: [row(3)]}
+        return {"variant": {"credibleSets": {"count": 3, "rows": pages.get(v["idx"], [])}}}
+
+    rows = fetch_all_credible_sets(vid, post=post)
+    assert [r["study_locus_id"] for r in rows] == ["L1", "L2", "L3"]
+    assert calls == [0, 1]

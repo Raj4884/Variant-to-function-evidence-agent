@@ -15,13 +15,16 @@ from ..models import EvidenceItem, VariantQuery
 
 ENDPOINT = "https://api.platform.opentargets.org/api/v4/graphql"
 
-# Field names below were confirmed by walking the live schema (CredibleSets, CredibleSet, Loci, Locus,
-# L2GPredictions, L2GPrediction, Study). NOT confirmed: Target.approvedSymbol, and whether credibleSets
-# is paginated by default (rows are compared with `count` and a warning is raised if they differ).
+# Confirmed against the live schema: credibleSets takes studyTypes (enum incl. gwas, eqtl, pqtl, ...) and
+# page {index, size}; field names of CredibleSets/CredibleSet/Loci/Locus/L2GPredictions/L2GPrediction/Study.
+# Only GWAS credible sets are fetched: L2G predictions exist for those, and QTL sets are a different evidence type.
+# NOT confirmed: Target.approvedSymbol, the maximum allowed page size, and that page.index is 0-based.
+PAGE_SIZE = 100
+MAX_PAGES = 30
 CREDIBLE_SET_QUERY = """
-query ($variantId: String!) {
+query ($variantId: String!, $idx: Int!) {
   variant(variantId: $variantId) {
-    credibleSets {
+    credibleSets(studyTypes: [gwas], page: {index: $idx, size: 100}) {
       count
       rows {
         studyLocusId studyId studyType finemappingMethod
@@ -165,34 +168,38 @@ def resolve_variant_id(rsid: str) -> str:
     return variants[0]
 
 
+def _convert_rows(cs_rows: list[dict], variant_id: str) -> list[dict]:
+    out = []
+    for s in cs_rows:
+        mine = [r["posteriorProbability"] for r in s["locus"]["rows"] if r["variant"]["id"] == variant_id]
+        if not mine or mine[0] is None:
+            continue
+        out.append({
+            "study_locus_id": s["studyLocusId"],
+            "study_id": s["studyId"],
+            "trait": (s.get("study") or {}).get("traitFromSource") or s.get("studyType") or "unknown trait",
+            "pip": mine[0],
+            "method": s.get("finemappingMethod") or "fine-mapped",
+            "study_type": s.get("studyType"),
+            "l2g": [
+                {"gene": p["target"]["approvedSymbol"], "score": p["score"]}
+                for p in (s.get("l2GPredictions") or {}).get("rows", [])
+                if p.get("target") and p["target"].get("approvedSymbol") and p.get("score") is not None
+            ],
+        })
+    return out
+
+
 def rows_from_response(data: dict, variant_id: str) -> list[dict]:
-    """Map the live response to normalised rows. pip is THIS variant's posterior inclusion probability
-    (the locus lists every variant in the credible set, so it must be picked out by id)."""
+    """Map ONE page of the live response to normalised rows. pip is THIS variant's posterior inclusion
+    probability (the locus lists every variant in the credible set, so it is picked out by id)."""
     import warnings
 
     try:
         cs = data["variant"]["credibleSets"]
         if cs["count"] > len(cs["rows"]):
             warnings.warn(f"Open Targets returned {len(cs['rows'])} of {cs['count']} credible sets for {variant_id}")
-        out = []
-        for s in cs["rows"]:
-            mine = [r["posteriorProbability"] for r in s["locus"]["rows"] if r["variant"]["id"] == variant_id]
-            if not mine or mine[0] is None:
-                continue
-            out.append({
-                "study_locus_id": s["studyLocusId"],
-                "study_id": s["studyId"],
-                "trait": (s.get("study") or {}).get("traitFromSource") or s.get("studyType") or "unknown trait",
-                "pip": mine[0],
-                "method": s.get("finemappingMethod") or "fine-mapped",
-                "study_type": s.get("studyType"),
-                "l2g": [
-                    {"gene": p["target"]["approvedSymbol"], "score": p["score"]}
-                    for p in (s.get("l2GPredictions") or {}).get("rows", [])
-                    if p.get("target") and p["target"].get("approvedSymbol") and p.get("score") is not None
-                ],
-            })
-        return out
+        return _convert_rows(cs["rows"], variant_id)
     except (KeyError, TypeError) as exc:
         raise RuntimeError(
             f"Open Targets response did not match the expected shape ({exc!r}). "
@@ -200,12 +207,36 @@ def rows_from_response(data: dict, variant_id: str) -> list[dict]:
         ) from exc
 
 
+def fetch_all_credible_sets(variant_id: str, post=None) -> list[dict]:
+    """Page through every GWAS credible set for a variant. `post` is injectable for tests."""
+    import warnings
+
+    post = post or _post
+    out: list[dict] = []
+    fetched = 0
+    count = None
+    for idx in range(MAX_PAGES):
+        try:
+            cs = post(CREDIBLE_SET_QUERY, {"variantId": variant_id, "idx": idx})["variant"]["credibleSets"]
+            count = cs["count"]
+            page = cs["rows"]
+            out += _convert_rows(page, variant_id)
+        except (KeyError, TypeError) as exc:
+            raise RuntimeError(f"Open Targets response did not match the expected shape ({exc!r}).") from exc
+        fetched += len(page)
+        if not page or fetched >= count:
+            break
+    if count is not None and fetched < count:
+        warnings.warn(f"Open Targets: fetched {fetched} of {count} GWAS credible sets for {variant_id} (MAX_PAGES reached)")
+    return out
+
+
 def http_transport() -> Transport:
     """Live transport. Variant effect for one rsID costs two calls (resolve + fetch)."""
 
     def run(q: VariantQuery) -> list[dict]:
         vid = resolve_variant_id(q.rsid)
-        return rows_from_response(_post(CREDIBLE_SET_QUERY, {"variantId": vid}), vid)
+        return fetch_all_credible_sets(vid)
 
     return run
 
