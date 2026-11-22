@@ -199,3 +199,22 @@ def test_near_tie_with_l2g_and_low_pip_both_cap_confidence_at_low():
                                           "l2g": [{"gene": "G", "score": 0.4}]}]) + [ag2]
     (h,) = rank_genes(lowpip)
     assert h.confidence == Confidence.LOW and any("low posterior" in n for n in h.notes)
+
+
+def test_validated_selection_rules():
+    import pandas as pd
+    from variant_evidence.validated import select_validated, stratum
+
+    base = {"Validated Variant rsID": "rs1", "Variant Class": "Cis Regulatory Element", "Target Gene": "A",
+            "Experimental_Validation": "Genome Editing|Gene Expression", "Chr": "chr1", "Loc (hg38)": 10,
+            "PMID": 1, "GWAS_DISEASE.TRAIT": "t", "Closest_Target_Gene_TSS_Dist": -200000.0}
+    rows = [
+        base,
+        dict(base, **{"Target Gene": "B"}),                                                        # second gene, same rsID
+        dict(base, **{"Validated Variant rsID": "rs2", "Variant Class": "non-coding RNA"}),         # R2
+        dict(base, **{"Validated Variant rsID": "rs3", "Experimental_Validation": "Reporter Assays"}),  # R3
+        dict(base, **{"Validated Variant rsID": "rs4"}),                                            # excluded (R5)
+    ]
+    sel = select_validated(pd.DataFrame(rows), exclude_rsids={"rs4"})
+    assert list(sel.rsid) == ["rs1"] and sel.genes[0] == ["A", "B"] and sel.stratum[0] == "distal"
+    assert stratum(5000) == "proximal" and stratum(-50000) == "mid" and stratum(None) == "unknown"
