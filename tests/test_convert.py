@@ -181,3 +181,21 @@ def test_fetch_all_credible_sets_pages_until_count_reached():
     rows = fetch_all_credible_sets(vid, post=post)
     assert [r["study_locus_id"] for r in rows] == ["L1", "L2", "L3"]
     assert calls == [0, 1]
+
+
+def test_near_tie_with_l2g_and_low_pip_both_cap_confidence_at_low():
+    from variant_evidence.aggregator import rank_genes
+    from variant_evidence.models import Confidence
+    from variant_evidence.providers.open_targets import parse_credible_sets
+
+    ag2 = EvidenceItem(id="a", source="ag2_precomputed", kind="variant_effect", gene="G", cell_type="x",
+                       value=0.5, extras={"_called": 1.0, "log_cpm": 3.0})
+    tie = parse_credible_sets("rs7", [{"study_id": "S", "trait": "t", "pip": 0.99,
+                                       "l2g": [{"gene": "O", "score": 0.99}, {"gene": "G", "score": 0.98}]}]) + [ag2]
+    (h,) = rank_genes(tie)
+    assert h.confidence == Confidence.LOW and any("Near-tie" in n for n in h.notes)
+
+    lowpip = parse_credible_sets("rs7", [{"study_id": "S", "trait": "t", "pip": 0.03,
+                                          "l2g": [{"gene": "G", "score": 0.4}]}]) + [ag2]
+    (h,) = rank_genes(lowpip)
+    assert h.confidence == Confidence.LOW and any("low posterior" in n for n in h.notes)

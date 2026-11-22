@@ -18,6 +18,10 @@ DOMINANCE_RATIO = 2.0  # top gene must beat the runner-up by this factor for HIG
 AMBIGUITY_RATIO = 0.75
 # Open Targets L2G counts as "preferring another gene" only if its score is at least this high.
 L2G_DISAGREE_MIN = 0.5
+# If the other L2G gene beats ours by less than this, the sources are near-tied: treat as multi-gene (cap LOW).
+L2G_TIE_MARGIN = 0.1
+# Best fine-mapping PIP below this: the variant is probably a tag for another causal variant (cap LOW).
+LOW_PIP = 0.1
 
 
 def _direction(lfc: float) -> Direction:
@@ -77,14 +81,29 @@ def rank_genes(items: list[EvidenceItem]) -> list[GeneHypothesis]:
         )
     hyps.sort(key=lambda h: h.score, reverse=True)
 
-    l2g_disagrees = bool(
-        hyps and l2g_best is not None and l2g_best.gene != hyps[0].gene and l2g_best.value >= L2G_DISAGREE_MIN
-    )
+    l2g_other = bool(hyps and l2g_best is not None and l2g_best.gene != hyps[0].gene and l2g_best.value >= L2G_DISAGREE_MIN)
+    top_l2g = max((i.value for i in l2g if hyps and i.gene == hyps[0].gene), default=0.0)
+    l2g_clear = l2g_other and (l2g_best.value - top_l2g) >= L2G_TIE_MARGIN   # other gene clearly preferred
+    l2g_tied = l2g_other and not l2g_clear                                   # near-tie between two genes
     for idx, h in enumerate(hyps):
         runner_up = hyps[1].score if idx == 0 and len(hyps) > 1 else None
         h.confidence = _confidence(idx, h, pip, runner_up)
-        if idx == 0 and l2g_disagrees and h.confidence == Confidence.HIGH:
-            h.confidence = Confidence.MEDIUM   # two sources disagree on the gene: never HIGH
+    if hyps:
+        top = hyps[0]
+        if l2g_clear and top.confidence == Confidence.HIGH:
+            top.confidence = Confidence.MEDIUM   # two sources disagree on the gene: never HIGH
+        if l2g_tied:
+            top.confidence = Confidence.LOW
+            top.notes.append(
+                f"Near-tie between {top.gene} and {l2g_best.gene} in Open Targets L2G "
+                f"({top_l2g:.2f} vs {l2g_best.value:.2f}): treat as a multi-gene locus."
+            )
+        if pip is not None and pip < LOW_PIP:
+            top.confidence = Confidence.LOW
+            top.notes.append(
+                f"Fine-mapping gives this variant a low posterior probability (best {pip:.2f}): "
+                "it may only tag a different causal variant, so the variant-level claim is weak."
+            )
     if len(hyps) > 1 and hyps[1].score >= AMBIGUITY_RATIO * hyps[0].score:
         close = [h for h in hyps[1:] if h.score >= AMBIGUITY_RATIO * hyps[0].score]
         hyps[0].confidence = Confidence.LOW
