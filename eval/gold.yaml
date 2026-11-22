@@ -25,5 +25,11 @@ loci:
   - {rsid: rs13066062, gene: CXCR6,  cell_types: [cd8, nk, t cell],           direction: down, split: paper_example}
   - {rsid: rs35705950, gene: MUC5B,  cell_types: [at2, type ii pneumocyte],                   direction: up,   split: paper_example}
   - {rsid: rs3820282,  gene: WNT4,   cell_types: [stromal, esc],               direction: up,   split: paper_example}
-  - {rsid: rs1421085,  gene: IRX3,   cell_types: [preadipocyte],          direction: up,   split: heldout_candidate, context: [adipo]}
+  # gene may be a list: any listed gene counts as correct.
+  # rs1421085: target genes IRX3 and IRX5 are listed by the Alsheikh 2022 review table of experimentally validated
+  #   non-coding variants (BMC Med Genomics, PMC8973751, 'distal enhancer', obesity). The primary paper (Claussnitzer
+  #   2015 NEJM, PMID 26287746) was NOT read. Direction left null: not verified.
+  - {rsid: rs1421085,  gene: [IRX3, IRX5], cell_types: [preadipocyte],    direction: null, split: heldout_candidate, context: [adipo]}
+  # rs12740374: Musunuru 2010 Nature, PMID 20686566 (abstract + text read via PMC3062476): the minor allele creates a
+  #   C/EBP site and raises hepatic SORT1 expression. Direction 'up' assumes ALT (T) is the minor allele.
   - {rsid: rs12740374, gene: SORT1,  cell_types: [hepatocyte],            direction: up,   split: heldout_candidate, context: [liver]}

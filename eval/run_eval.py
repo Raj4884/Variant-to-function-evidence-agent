@@ -50,7 +50,8 @@ def evaluate(gold_path: str, ag2_csv: str, ot_json: str | None, synthesizer=None
             rows.append((g["rsid"], "abstain", "-", "-"))
             continue
         top = rep.hypotheses[0]
-        gene_ok = top.gene == g["gene"]
+        genes = g["gene"] if isinstance(g["gene"], list) else [g["gene"]]
+        gene_ok = top.gene in genes
         dir_known = g.get("direction") is not None
         dir_ok = dir_known and gene_ok and top.direction.value == g["direction"]
         t["direction_n"] += dir_known
